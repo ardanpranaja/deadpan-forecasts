@@ -13,7 +13,21 @@ const sourcePath = path.join(__dirname, "entry.txt");
 const outputDir = process.env.MAKEFUN_OUTPUT_DIR || "/output";
 const outputPath = path.join(outputDir, "entry.txt");
 
-const forecast = fs.readFileSync(sourcePath, "utf8");
+let forecast = fs.readFileSync(sourcePath, "utf8");
+
+// Defensive normalisation: strip a leading UTF-8 byte-order mark and
+// one trailing newline, so an editor's stray BOM or newline cannot trip
+// the gate or leak into the output. The entry itself is a single line
+// either way, so this never changes a well-formed entry.
+if (forecast.charCodeAt(0) === 0xfeff) {
+  forecast = forecast.slice(1);
+}
+if (forecast.endsWith("\n")) {
+  forecast = forecast.slice(0, -1);
+  if (forecast.endsWith("\r")) {
+    forecast = forecast.slice(0, -1);
+  }
+}
 
 // Gate checks mirroring the competition gate: the entry must be UTF-8
 // text of 1 to 160 characters, not only white space, and a single
@@ -31,5 +45,12 @@ if (forecast.indexOf("\n") !== -1 || forecast.indexOf("\r") !== -1) {
 
 fs.mkdirSync(outputDir, { recursive: true });
 fs.writeFileSync(outputPath, forecast, "utf8");
+
+// Round-trip check: read the output back and refuse to report success
+// unless it matches the validated line exactly, byte for byte.
+const roundTrip = fs.readFileSync(outputPath, "utf8");
+if (roundTrip !== forecast) {
+  throw new Error("round-trip check failed: output differs from the validated forecast");
+}
 
 console.log("wrote " + outputPath + " (" + forecast.length + " chars)");
